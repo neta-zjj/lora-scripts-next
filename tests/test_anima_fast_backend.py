@@ -215,6 +215,36 @@ class AdapterTests(unittest.TestCase):
         self.assertIs(adapted.values["network_train_unet_only"], False)
         self.assertIn("network_train_unet_only = false", dump_flat_toml(adapted.values))
 
+    def test_adapt_config_disables_text_cache_when_training_text_encoder(self):
+        with tempfile.TemporaryDirectory() as td:
+            runtime = make_runtime(Path(td))
+            adapted = adapt_config(
+                {
+                    "model_train_type": "anima-lora-fast",
+                    "network_train_unet_only": False,
+                    "use_text_cache": True,
+                },
+                runtime,
+                "run-1",
+            )
+
+        self.assertIs(adapted.values["use_text_cache"], False)
+        self.assertTrue(any("network_train_unet_only" in w for w in adapted.warnings))
+
+    def test_adapt_config_keeps_text_cache_when_unet_only_default(self):
+        with tempfile.TemporaryDirectory() as td:
+            runtime = make_runtime(Path(td))
+            adapted = adapt_config(
+                {
+                    "model_train_type": "anima-lora-fast",
+                    "use_text_cache": True,
+                },
+                runtime,
+                "run-1",
+            )
+
+        self.assertIs(adapted.values["use_text_cache"], True)
+
     def test_tlora_variant_injects_curated_upstream_flags(self):
         with tempfile.TemporaryDirectory() as td:
             runtime = make_runtime(Path(td))
