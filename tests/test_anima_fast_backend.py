@@ -200,6 +200,21 @@ class AdapterTests(unittest.TestCase):
         self.assertEqual(adapted.values["network_args"], ["rank_dropout=0.1"])
         self.assertIn('method = "lora"', dump_flat_toml(adapted.values))
 
+    def test_adapt_config_passes_network_train_unet_only_through(self):
+        with tempfile.TemporaryDirectory() as td:
+            runtime = make_runtime(Path(td))
+            adapted = adapt_config(
+                {
+                    "model_train_type": "anima-lora-fast",
+                    "network_train_unet_only": False,
+                },
+                runtime,
+                "run-1",
+            )
+
+        self.assertIs(adapted.values["network_train_unet_only"], False)
+        self.assertIn("network_train_unet_only = false", dump_flat_toml(adapted.values))
+
     def test_tlora_variant_injects_curated_upstream_flags(self):
         with tempfile.TemporaryDirectory() as td:
             runtime = make_runtime(Path(td))

@@ -86,6 +86,7 @@ Schema.intersect([
         network_dim: Schema.number().min(1).default(16).description("LoRA 维度"),
         network_alpha: Schema.number().min(1).default(16).description("LoRA alpha"),
         network_dropout: Schema.number().step(0.01).default(0).description("LoRA dropout"),
+        network_train_unet_only: Schema.boolean().default(true).description("仅训练 U-Net / DiT；关闭后可训练 text encoder LoRA（不能同时使用文本编码缓存）"),
         network_args_custom: Schema.array(String).role('table').description("高级项：自定义 network_args，一行一个 key=value；这是传给 anima_lora LoRA 网络模块的参数列表，不是顶层 TOML。新手谨慎使用；Fast 仅允许 rank_dropout、module_dropout、loraplus_lr_ratio、loraplus_unet_lr_ratio、loraplus_text_encoder_lr_ratio，不支持的 key 会中止训练"),
     }).description("网络设置"),
 ])
