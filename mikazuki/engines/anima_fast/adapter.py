@@ -331,6 +331,11 @@ def adapt_config(source: dict[str, Any], runtime: RuntimeConfig, run_id: str) ->
             f"fast_variant={fast_variant} is not supported by anima-lora-fast; "
             "choose one of: lora, tlora"
         )
+    if fast_variant == "tlora" and not truthy(source.get("network_train_unet_only", True)):
+        raise AdapterError(
+            "fast_variant=tlora 与 network_train_unet_only=false（训练 text encoder）当前不兼容；"
+            "请启用 network_train_unet_only，或改用 fast_variant=lora"
+        )
     allowed_network_args = set(FAST_NETWORK_ARGS_ALLOWLIST)
     if fast_variant == "tlora":
         allowed_network_args.update(TLORA_NETWORK_ARGS)
@@ -442,6 +447,12 @@ def adapt_config(source: dict[str, Any], runtime: RuntimeConfig, run_id: str) ->
         warnings.append(
             "use_vae_cache/use_text_cache 不能与 skip_cache_check 同时开启；"
             "已自动关闭缓存读取和跳过检查，改用 live encoding"
+        )
+    if not truthy(values.get("network_train_unet_only", True)) and truthy(values.get("use_text_cache")):
+        values["use_text_cache"] = False
+        warnings.append(
+            "network_train_unet_only=false（训练 text encoder）不能与文本编码缓存同时开启，"
+            "上游断言会中止训练；已自动关闭 use_text_cache，改用 live encoding"
         )
     values.setdefault("log_prefix", "af_")
     values.setdefault("log_tracker_name", "tb")

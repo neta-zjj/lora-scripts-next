@@ -249,4 +249,17 @@ describe("dynamic schema adapter", () => {
     expect(Object.values(validateModel(schema, model)).join(" ")).toContain("attn_mode=torch")
     expect(normalizeModelForSchema(schema, model)).toMatchObject({ attn_mode: "torch", torch_compile: false })
   })
+
+  it("exposes network_train_unet_only in the real anima-lora-fast schema", () => {
+    const schemaDir = resolve(process.cwd(), "../mikazuki/schema")
+    const realSources = readdirSync(schemaDir).filter((name) => name.endsWith(".ts")).map((file) => ({
+      name: file.slice(0, -3),
+      hash: file,
+      schema: readFileSync(resolve(schemaDir, file), "utf8"),
+    }))
+    const fast = executeSchemaSources(realSources, "anima-lora-fast")
+    const network = fast.sections.find((section) => section.title === "网络设置")!
+    expect(network.fields.map((field) => field.key)).toContain("network_train_unet_only")
+    expect(createDefaultModel(fast)).toMatchObject({ network_train_unet_only: true })
+  })
 })
