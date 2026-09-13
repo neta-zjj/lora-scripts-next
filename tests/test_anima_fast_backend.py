@@ -265,6 +265,22 @@ class AdapterTests(unittest.TestCase):
         self.assertIn("rank_dropout=0.1", adapted.values["network_args"])
         self.assertEqual(adapted.values["down_init"], "weight_svd")
 
+    def test_tlora_variant_rejects_text_encoder_training(self):
+        with tempfile.TemporaryDirectory() as td:
+            runtime = make_runtime(Path(td))
+            with self.assertRaisesRegex(
+                AdapterError,
+                "fast_variant=tlora.*network_train_unet_only=false",
+            ):
+                adapt_config(
+                    {
+                        "fast_variant": "tlora",
+                        "network_train_unet_only": False,
+                    },
+                    runtime,
+                    "run-1",
+                )
+
     def test_tlora_variant_cannot_be_overridden_by_custom_network_args(self):
         with tempfile.TemporaryDirectory() as td:
             runtime = make_runtime(Path(td))
