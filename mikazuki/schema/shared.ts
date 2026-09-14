@@ -228,7 +228,7 @@
                     "AdaFactor",
                     "Prodigy",
                     "pytorch_optimizer.CAME",
-                ]).default("AdamW8bit").description("优化器（仅 anima_lora Fast 已支持的选项）"),
+                ]).default("AdamW").description("优化器（仅 anima_lora Fast 已支持的选项）"),
                 min_snr_gamma: Schema.number().step(0.1).description("最小信噪比伽马值, 如果启用推荐为 5"),
             }),
 

@@ -100,6 +100,7 @@ CURATED_TOP_LEVEL_FIELDS = {
     "use_timestep_mask", "min_rank", "alpha_rank_scale",
     "use_moe_style", "route_per_layer", "router_source",
     "use_ortho", "use_ortho_init", "num_registers",
+
 }
 
 FAST_DATASET_REPEAT_FIELDS = {"dataset_repeats", "num_repeats", "repeats", "repeat"}
@@ -336,6 +337,7 @@ def adapt_config(source: dict[str, Any], runtime: RuntimeConfig, run_id: str) ->
             "fast_variant=tlora 与 network_train_unet_only=false（训练 text encoder）当前不兼容；"
             "请启用 network_train_unet_only，或改用 fast_variant=lora"
         )
+
     allowed_network_args = set(FAST_NETWORK_ARGS_ALLOWLIST)
     if fast_variant == "tlora":
         allowed_network_args.update(TLORA_NETWORK_ARGS)
@@ -454,16 +456,20 @@ def adapt_config(source: dict[str, Any], runtime: RuntimeConfig, run_id: str) ->
             "network_train_unet_only=false（训练 text encoder）不能与文本编码缓存同时开启，"
             "上游断言会中止训练；已自动关闭 use_text_cache，改用 live encoding"
         )
+
     values.setdefault("log_prefix", "af_")
     values.setdefault("log_tracker_name", "tb")
     if is_empty(values.get("attn_mode")):
         values["attn_mode"] = "torch"
         warnings.append("attn_mode 留空时使用 torch 保底；如需 flash 请先确认插件环境已安装 flash-attn")
     if values["attn_mode"] == "torch" and truthy(values.get("torch_compile")):
-        raise AdapterError(
-            "attn_mode=torch 与 torch_compile=true 组合存在兼容性风险；"
-            "请改用 flash/xformers，或关闭 torch_compile"
-        )
+        if truthy(source.get("torch_compile")):
+            raise AdapterError(
+                "attn_mode=torch cannot be combined with torch_compile=true in Anima Fast "
+                "(#336); disable torch_compile or choose a supported attention mode"
+            )
+        values["torch_compile"] = False
+        warnings.append("torch_compile was disabled because attn_mode=torch is incompatible with #336")
     values["method"] = "lora"
     values["methods_subdir"] = "gui-methods"
     values["network_module"] = "networks.lora_anima"

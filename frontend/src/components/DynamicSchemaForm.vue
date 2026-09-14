@@ -23,10 +23,14 @@ function visibleFields(fields: FormField[]) {
   return fields.filter((field) => !field.hidden && selectedFields.value.get(field.key) === field)
 }
 
-function effectiveField(field: FormField) {
-  return field.key === "torch_compile" && isAnimaFastTorchCompileBlocked(props.schema, props.modelValue)
-    ? { ...field, disabled: true }
-    : field
+function effectiveField(field: FormField): FormField {
+  if (field.key !== "torch_compile") return field
+  if (!isAnimaFastTorchCompileBlocked(props.schema, props.modelValue)) return field
+  return {
+    ...field,
+    disabled: true,
+    description: `${field.description || ""} attn_mode=torch 时会因 #336 禁用 torch_compile；请关闭该选项或改用受支持的 attention 模式。`.trim(),
+  }
 }
 
 function update(key: string, value: FormModel[string]) {

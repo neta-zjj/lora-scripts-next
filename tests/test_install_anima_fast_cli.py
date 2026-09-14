@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import contextlib
+import io
 import sys
 import tempfile
 import unittest
@@ -17,6 +19,19 @@ class InstallAnimaFastCliTests(unittest.TestCase):
         root = cli.find_project_root(Path(__file__).resolve().parents[2])
         self.assertTrue((root / "gui.py").is_file())
         self.assertTrue((root / "config" / "anima_fast_backend.toml").is_file())
+
+    def test_default_config_pins_anima_v1171_snapshot(self):
+        config = (ROOT / "config" / "anima_fast_backend.toml").read_text(encoding="utf-8")
+
+        self.assertIn('source_commit = "b43928b5e4b82b907bfca1a322383a33088d0bdd"', config)
+
+    def test_help_describes_cuda_132_pytorch_index(self):
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output), self.assertRaises(SystemExit) as raised:
+            cli.main(["--help"])
+
+        self.assertEqual(raised.exception.code, 0)
+        self.assertIn("cu132 appended if missing", output.getvalue())
 
     def test_dry_run_prints_plan(self):
         with tempfile.TemporaryDirectory() as td:

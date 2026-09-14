@@ -23,7 +23,7 @@ except ModuleNotFoundError:  # pragma: no cover
 
         @staticmethod
         def dumps(value: dict):
-            from mikazuki.anima_fast_backend.adapter import dump_flat_toml
+            from mikazuki.engines.anima_fast.adapter import dump_flat_toml
             return dump_flat_toml(value)
 
     toml = _Toml()
