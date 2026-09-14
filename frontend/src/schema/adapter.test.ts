@@ -228,6 +228,7 @@ describe("dynamic schema adapter", () => {
       method: "lora",
       methods_subdir: "gui-methods",
       network_module: "networks.lora_anima",
+      optimizer_type: "AdamW",
     })
   })
 

@@ -17,7 +17,7 @@ enable_bucket = true
 train_batch_size = 1
 gradient_checkpointing = true
 
-optimizer_type = "AdamW8bit"
+optimizer_type = "AdamW"
 learning_rate = 0.00005
 
 mixed_precision = "bf16"

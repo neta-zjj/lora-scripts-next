@@ -56,6 +56,22 @@ class AnimaFastStaticIntegrationTests(unittest.TestCase):
             self.assertNotIn("compile_mode", text)
             self.assertNotIn("dynamo_backend", text)
 
+    def test_fast_schema_and_presets_default_to_adamw(self):
+        shared = Path("mikazuki/schema/shared.ts").read_text(encoding="utf-8")
+        fast_optimizer = shared[shared.index("ANIMA_FAST_LR_OPTIMIZER"):]
+        self.assertIn(']).default("AdamW").description("优化器（仅 anima_lora Fast 已支持的选项）")', fast_optimizer)
+
+        presets = Path("config/presets")
+        for name in (
+            "anima-fast-lora-character.toml",
+            "anima-fast-lora-style.toml",
+            "anima-fast-lora-character-tlora.toml",
+            "anima-fast-lora-style-tlora.toml",
+        ):
+            text = (presets / name).read_text(encoding="utf-8")
+            self.assertIn('optimizer_type = "AdamW"', text, name)
+            self.assertNotIn('optimizer_type = "AdamW8bit"', text, name)
+
     def test_fast_adapter_does_not_whitelist_emosens(self):
         adapter = Path("mikazuki/engines/anima_fast/adapter.py").read_text(encoding="utf-8")
         self.assertIn("FAST_SUPPORTED_OPTIMIZERS", adapter)
