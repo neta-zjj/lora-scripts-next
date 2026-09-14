@@ -277,13 +277,17 @@ class AnimaFastPluginApiTests(unittest.TestCase):
             with mock.patch("mikazuki.app.api.Path.cwd", return_value=root), \
                 mock.patch("mikazuki.engines.anima_fast.routes.anima_fast_runtime", return_value=object()), \
                 mock.patch("mikazuki.engines.anima_fast.routes.apply_anima_fast_preview", return_value=[]), \
-                mock.patch("mikazuki.engines.anima_fast.routes.adapt_config", return_value=adapted), \
+                mock.patch("mikazuki.engines.anima_fast.routes.adapt_config", return_value=adapted) as adapter, \
                 mock.patch("mikazuki.engines.anima_fast.routes.run_preflight", return_value=preflight):
-                response = asyncio.run(api.engine_preflight("anima-fast", make_request({"model_train_type": "anima-lora-fast"})))
+                response = asyncio.run(api.engine_preflight("anima-fast", make_request({
+                    "model_train_type": "anima-lora-fast",
+                    "fast_variant": "tlora",
+                })))
 
         self.assertEqual(response.status, "success")
         self.assertIn("cache 与 skip_cache_check 已自动关闭", response.data["warnings"])
         self.assertIn("runtime warning", response.data["warnings"])
+        self.assertEqual(adapter.call_args.args[0]["fast_variant"], "tlora")
 
 
 if __name__ == "__main__":

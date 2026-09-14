@@ -32,8 +32,8 @@ def build_launch_spec(runtime: RuntimeConfig, config_path: Path, task_id: str, g
     env["TERM"] = "dumb"
     env["ANIMA_FAST_PARENT_TASK_ID"] = task_id
     if platform.system() == "Linux" and platform.machine().lower() in {"aarch64", "arm64"}:
-        # bitsandbytes 0.49.2 has no cuda132 binary yet. Its bundled cuda130
-        # backend works on GB10 alongside the cu132 PyTorch runtime.
+        # bitsandbytes 0.49.2 has no cuda132 binary yet; its cuda130 backend
+        # remains compatible with the cu132 PyTorch runtime on GB10.
         env.setdefault("BNB_CUDA_VERSION", "130")
     env.pop("PYTHONPATH", None)
     if runtime.hf_home is not None:

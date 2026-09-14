@@ -12,6 +12,9 @@ import subprocess
 from mikazuki.engines.anima_fast.environment import (
     ANIMA_OPTIMIZER_PACKAGES,
     AuditResult,
+    _collect_python_facts,
+    _find_base_python,
+    _run_streaming_once,
     anima_pip_dependency_targets,
     audit_environment,
     build_environment_install_plan,
@@ -34,10 +37,13 @@ from mikazuki.tasks import Task, tm
 
 def _fake_discovered_python(plan) -> Path:
     """Platform-aware fake of the uv-installed base python (matches
-    ``_find_base_python`` glob patterns on the current OS)."""
+    ``_find_base_python`` glob patterns on the current OS and arch)."""
     if sys.platform == "win32":
         return plan.python_install_dir / "cpython-3.13.99-windows-x86_64-none" / "python.exe"
-    return plan.python_install_dir / "cpython-3.13.99-linux-x86_64-gnu" / "bin" / "python3"
+    import platform as _platform
+
+    arch = "aarch64" if _platform.machine().lower() in {"aarch64", "arm64"} else "x86_64"
+    return plan.python_install_dir / f"cpython-3.13.99-linux-{arch}-gnu" / "bin" / "python3"
 
 
 class AnimaFastEnvironmentInstallerTests(unittest.TestCase):
@@ -83,6 +89,9 @@ class AnimaFastEnvironmentInstallerTests(unittest.TestCase):
     def test_install_plan_uses_linux_python_layout_off_windows(self):
         with tempfile.TemporaryDirectory() as td, mock.patch(
             "mikazuki.engines.anima_fast.environment.sys.platform", "linux"
+        ), mock.patch(
+            "mikazuki.engines.anima_fast.environment.platform_module.machine",
+            return_value="x86_64",
         ):
             project = Path(td)
             source = self._make_source(project)
@@ -92,6 +101,144 @@ class AnimaFastEnvironmentInstallerTests(unittest.TestCase):
 
         self.assertTrue(str(plan.base_python).replace("\\", "/").endswith("cpython-3.13.13-linux-x86_64-gnu/bin/python3"))
         self.assertTrue(str(plan.venv_python).replace("\\", "/").endswith("extensions/anima_lora/.venv/bin/python"))
+
+    def test_install_plan_uses_linux_aarch64_python_layout(self):
+        with tempfile.TemporaryDirectory() as td, \
+            mock.patch("mikazuki.engines.anima_fast.environment.sys.platform", "linux"), \
+            mock.patch(
+                "mikazuki.engines.anima_fast.environment.platform_module.machine",
+                return_value="aarch64",
+            ):
+            project = Path(td)
+            source = self._make_source(project)
+            layout = ExtensionLayout(project / "extensions" / "anima_lora")
+
+            plan = build_environment_install_plan(project, layout, source)
+
+        self.assertTrue(
+            str(plan.base_python).replace("\\", "/").endswith(
+                "cpython-3.13.13-linux-aarch64-gnu/bin/python3"
+            )
+        )
+
+    def test_find_base_python_filters_linux_fallback_by_architecture(self):
+        with tempfile.TemporaryDirectory() as td, \
+            mock.patch("mikazuki.engines.anima_fast.environment.sys.platform", "linux"), \
+            mock.patch(
+                "mikazuki.engines.anima_fast.environment.platform_module.machine",
+                return_value="aarch64",
+            ):
+            project = Path(td)
+            source = self._make_source(project)
+            layout = ExtensionLayout(project / "extensions" / "anima_lora")
+            plan = build_environment_install_plan(project, layout, source)
+            x64_python = (
+                plan.python_install_dir
+                / "cpython-3.13.99-linux-x86_64-gnu"
+                / "bin"
+                / "python3"
+            )
+            arm_python = (
+                plan.python_install_dir
+                / "cpython-3.13.98-linux-aarch64-gnu"
+                / "bin"
+                / "python3"
+            )
+            x64_python.parent.mkdir(parents=True)
+            x64_python.write_text("", encoding="utf-8")
+            arm_python.parent.mkdir(parents=True)
+            arm_python.write_text("", encoding="utf-8")
+
+            discovered = _find_base_python(plan)
+
+        self.assertEqual(discovered, arm_python.resolve())
+
+    def test_install_plan_rejects_unsupported_runtime_platform(self):
+        with tempfile.TemporaryDirectory() as td, \
+            mock.patch("mikazuki.engines.anima_fast.environment.sys.platform", "darwin"), \
+            mock.patch(
+                "mikazuki.engines.anima_fast.environment.platform_module.machine",
+                return_value="arm64",
+            ):
+            project = Path(td)
+            source = self._make_source(project)
+            layout = ExtensionLayout(project / "extensions" / "anima_lora")
+
+            with self.assertRaisesRegex(
+                RuntimeError,
+                "Windows x86_64.*Linux x86_64.*Linux aarch64",
+            ):
+                build_environment_install_plan(project, layout, source)
+
+    def test_source_snapshot_includes_anima_lora_package(self):
+        from mikazuki.engines.anima_fast.installer import build_install_plan, copy_source_snapshot
+
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            source = self._make_source(root)
+            (source / "anima_lora").mkdir()
+            (source / "anima_lora" / "__init__.py").write_text("", encoding="utf-8")
+            layout = ExtensionLayout(root / "extensions" / "anima_lora")
+
+            copy_source_snapshot(build_install_plan(source, layout, dry_run=False))
+            copied = (layout.source / "anima_lora" / "__init__.py").is_file()
+
+        self.assertTrue(copied)
+
+    def test_linux_aarch64_launch_sets_bitsandbytes_cuda_compatibility(self):
+        from mikazuki.engines.anima_fast.launcher import build_launch_spec
+        from mikazuki.engines.anima_fast.settings import RuntimeConfig
+
+        with tempfile.TemporaryDirectory() as td, \
+            mock.patch("mikazuki.engines.anima_fast.launcher.platform.system", return_value="Linux"), \
+            mock.patch("mikazuki.engines.anima_fast.launcher.platform.machine", return_value="aarch64"):
+            root = Path(td)
+            runtime = RuntimeConfig(
+                anima_root=root / "extensions" / "anima_lora" / "source",
+                python=root / "extensions" / "anima_lora" / ".venv" / "bin" / "python",
+                lora_next_root=root,
+                output_dir=root / "output",
+                logging_dir=root / "logs",
+                cache_dir=root / ".cache",
+            )
+            config = root / "config.toml"
+            config.write_text("", encoding="utf-8")
+
+            spec = build_launch_spec(runtime, config, "run-1")
+
+        self.assertEqual(spec.env["BNB_CUDA_VERSION"], "130")
+
+    def test_resize_uses_v1171_script_and_target_res_argument(self):
+        from mikazuki.engines.anima_fast.preprocess import run_resize_images
+        from mikazuki.engines.anima_fast.settings import RuntimeConfig
+
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            anima_root = root / "source"
+            script = anima_root / "scripts" / "preprocess" / "resize_images.py"
+            script.parent.mkdir(parents=True)
+            script.write_text("", encoding="utf-8")
+            source = root / "dataset"
+            source.mkdir()
+            runtime = RuntimeConfig(
+                anima_root=anima_root,
+                python=root / "python",
+                lora_next_root=root,
+                output_dir=root / "output",
+                logging_dir=root / "logs",
+                cache_dir=root / ".cache",
+            )
+
+            with mock.patch(
+                "mikazuki.engines.anima_fast.preprocess.subprocess.run",
+                return_value=mock.Mock(returncode=0),
+            ) as run:
+                run_resize_images(runtime, source, root / "resized", 1024)
+
+        command = run.call_args.args[0]
+        self.assertEqual(command[1], str(script))
+        self.assertIn("--target_res", command)
+        self.assertNotIn("--resolution", command)
 
     def test_ready_requires_audit_ok_facts(self):
         with tempfile.TemporaryDirectory() as td:
@@ -196,6 +343,36 @@ class AnimaFastEnvironmentInstallerTests(unittest.TestCase):
         self.assertEqual(calls["count"], 2)
         self.assertTrue(any("[retry]" in line for line in lines))
 
+    def test_audit_subprocess_sets_bitsandbytes_cuda_version_on_linux_aarch64(self):
+        captured: dict = {}
+
+        def fake_run(*args, **kwargs):
+            captured["env"] = kwargs["env"]
+            return mock.Mock(
+                returncode=0,
+                stdout='{"python": "python", "packages": {}, "imports": {}}\n',
+                stderr="",
+            )
+
+        with tempfile.TemporaryDirectory() as td, \
+            mock.patch("mikazuki.engines.anima_fast.environment.sys.platform", "linux"), \
+            mock.patch(
+                "mikazuki.engines.anima_fast.environment.platform_module.machine",
+                return_value="aarch64",
+            ), \
+            mock.patch(
+                "mikazuki.engines.anima_fast.environment.subprocess.run",
+                side_effect=fake_run,
+            ):
+            _collect_python_facts(
+                Path("python"),
+                packages=[],
+                imports=[],
+                cwd=Path(td),
+            )
+
+        self.assertEqual(captured["env"]["BNB_CUDA_VERSION"], "130")
+
     def test_audit_environment_detects_anima_missing_dependency(self):
         with tempfile.TemporaryDirectory() as td:
             project = Path(td)
@@ -295,6 +472,9 @@ class AnimaFastEnvironmentInstallerTests(unittest.TestCase):
         self.assertIn("torch==2.12.0+cu132", text)
         self.assertIn("torchvision==0.27.0+cu132", text)
         self.assertIn('triton-windows==3.7.0.post26 ; sys_platform == "win32"', text)
+        self.assertIn("transformers==5.10.1", text)
+        self.assertIn("diffusers==0.39.0", text)
+        self.assertIn("safetensors==0.8.0", text)
 
     def test_anima_expected_packages_skip_triton_windows_on_linux(self):
         from mikazuki.engines.anima_fast.environment import _anima_expected_for_platform
@@ -315,18 +495,20 @@ class AnimaFastEnvironmentInstallerTests(unittest.TestCase):
 
         self.assertIn('opencv-python-headless==4.13.0.92 ; sys_platform == "linux"', text)
 
-    def test_flash_attn_targets_follow_upstream_cu132_matrix(self):
+    def test_flash_attn_targets_cover_windows_and_linux_architectures(self):
+        from mikazuki.engines.anima_fast.environment import flash_attn_dependency_target
+
+        windows = flash_attn_dependency_target("win32", "AMD64")
         linux_x64 = flash_attn_dependency_target("linux", "x86_64")
         linux_arm = flash_attn_dependency_target("linux", "aarch64")
-        windows = flash_attn_dependency_target("win32", "AMD64")
 
-        self.assertIn("cu132torch2.12", linux_x64)
+        self.assertIn("cu132torch2.12", windows)
+        self.assertIn("win_amd64", windows)
         self.assertIn("linux_x86_64", linux_x64)
         self.assertIn("linux_aarch64", linux_arm)
-        self.assertIn("win_amd64", windows)
         self.assertIsNone(flash_attn_dependency_target("darwin", "arm64"))
 
-    def test_patch_comfyui_checkpoint_prefix(self):
+    def test_patch_comfyui_checkpoint_prefix_is_idempotent(self):
         from mikazuki.engines.anima_fast.environment import patch_comfyui_checkpoint_prefix
 
         with tempfile.TemporaryDirectory() as td:
@@ -334,7 +516,8 @@ class AnimaFastEnvironmentInstallerTests(unittest.TestCase):
             first = patch_comfyui_checkpoint_prefix(source, lambda _line: None)
             second = patch_comfyui_checkpoint_prefix(source, lambda _line: None)
             namespace: dict = {}
-            exec(compile((source / "library" / "anima" / "weights.py").read_text(), "weights.py", "exec"), namespace)
+            weights = source / "library" / "anima" / "weights.py"
+            exec(compile(weights.read_text(encoding="utf-8"), "weights.py", "exec"), namespace)
 
         self.assertTrue(first)
         self.assertEqual(second, [])
@@ -413,8 +596,6 @@ class AnimaFastEnvironmentInstallerTests(unittest.TestCase):
         self.assertEqual(captured["env"].get("HF_ENDPOINT"), "https://modelscope.cn")
 
     def test_install_streaming_emits_heartbeat_when_command_is_silent(self):
-        from mikazuki.engines.anima_fast.environment import _run_streaming_once
-
         lines: list[str] = []
         with tempfile.TemporaryDirectory() as td:
             _run_streaming_once(
@@ -426,6 +607,77 @@ class AnimaFastEnvironmentInstallerTests(unittest.TestCase):
 
         self.assertTrue(any(line.startswith("[wait]") for line in lines))
         self.assertIn("[exit] returncode=0", lines)
+
+    def test_install_streaming_reaps_live_process_before_propagating_callback_errors(self):
+        for failure_source in ("reader", "log"):
+            with self.subTest(failure_source=failure_source):
+                original_error = (
+                    OSError("simulated read failure")
+                    if failure_source == "reader"
+                    else ValueError("simulated log failure")
+                )
+                events = []
+                process_holder = {}
+
+                class _FakeStdout:
+                    def __init__(self):
+                        self.reads = 0
+
+                    def readline(self):
+                        if failure_source == "reader":
+                            raise original_error
+                        self.reads += 1
+                        return "output\n" if self.reads == 1 else ""
+
+                class _LiveProcess:
+                    def __init__(self, *args, **kwargs):
+                        self.stdout = _FakeStdout()
+                        self.killed = False
+                        self.reaped = False
+                        process_holder["process"] = self
+
+                    def poll(self):
+                        return None if not self.reaped else -9
+
+                    def terminate(self):
+                        events.append("terminate")
+
+                    def kill(self):
+                        events.append("kill")
+                        self.killed = True
+
+                    def wait(self, timeout=None):
+                        events.append(("wait", timeout))
+                        if not self.killed:
+                            if timeout is None:
+                                raise AssertionError(
+                                    "blocking wait called while subprocess is still alive"
+                                )
+                            raise subprocess.TimeoutExpired(["uv"], timeout)
+                        self.reaped = True
+                        return -9
+
+                def log(line):
+                    if failure_source == "log" and line == "output":
+                        raise original_error
+
+                with tempfile.TemporaryDirectory() as td, mock.patch(
+                    "mikazuki.engines.anima_fast.environment.subprocess.Popen",
+                    _LiveProcess,
+                ):
+                    with self.assertRaises(type(original_error)) as raised:
+                        _run_streaming_once(
+                            ["uv", "pip", "install"],
+                            Path(td),
+                            log,
+                            heartbeat_seconds=0.01,
+                        )
+
+                self.assertIs(raised.exception, original_error)
+                self.assertEqual(events[0], "terminate")
+                self.assertIsNotNone(events[1][1])
+                self.assertEqual(events[2:], ["kill", ("wait", None)])
+                self.assertTrue(process_holder["process"].reaped)
 
     def test_install_streaming_uses_windows_system_certificates_by_default(self):
         from mikazuki.engines.anima_fast.environment import _run_streaming_once
@@ -545,14 +797,19 @@ class AnimaFastEnvironmentInstallerTests(unittest.TestCase):
         self.assertIn("optimum-quanto>=0.2.0", targets)
         self.assertIn("iopath==0.1.10", targets)
 
-    def test_anima_pip_dependency_targets_install_triton_on_windows_only(self):
+    def test_anima_pip_dependency_targets_are_platform_aware(self):
         windows_targets = anima_pip_dependency_targets("win32")
         linux_targets = anima_pip_dependency_targets("linux")
 
         self.assertIn("triton-windows==3.7.0.post26", windows_targets)
         self.assertNotIn("triton-windows==3.7.0.post26", linux_targets)
+        self.assertIn("opencv-python", windows_targets)
+        self.assertIn("opencv-python-headless", linux_targets)
+        for target in ("torch", "torchvision", "accelerate", "transformers", "diffusers"):
+            self.assertIn(target, windows_targets)
+            self.assertIn(target, linux_targets)
 
-    def test_install_environment_pip_install_includes_explicit_optimizer_targets(self):
+    def test_install_environment_uses_explicit_targets_and_uv_cache(self):
         with tempfile.TemporaryDirectory() as td:
             project = Path(td)
             source = self._make_source(project)
@@ -561,9 +818,11 @@ class AnimaFastEnvironmentInstallerTests(unittest.TestCase):
             plan = build_environment_install_plan(project, layout, source, dry_run=False)
             self._make_runtime_source(layout)
             discovered_python = _fake_discovered_python(plan)
+            commands: list[list[str]] = []
             pip_commands: list[list[str]] = []
 
             def fake_run(command, cwd, log, env=None, retries=0):
+                commands.append(list(command))
                 if len(command) >= 3 and command[0] == str(discovered_python) and command[1:3] == ["-m", "venv"]:
                     plan.venv_python.parent.mkdir(parents=True)
                     plan.venv_python.write_text("", encoding="utf-8")
@@ -574,6 +833,12 @@ class AnimaFastEnvironmentInstallerTests(unittest.TestCase):
                     pip_commands.append(list(command))
 
             with mock.patch("mikazuki.engines.anima_fast.environment._uv_command", return_value="uv"), \
+                mock.patch(
+                    "mikazuki.engines.anima_fast.environment.anima_pip_dependency_targets",
+                    return_value=anima_pip_dependency_targets("win32"),
+                ), \
+                mock.patch("mikazuki.engines.anima_fast.environment.copy_source_snapshot"), \
+                mock.patch("mikazuki.engines.anima_fast.environment._run_streaming", side_effect=fake_run), \
                 mock.patch(
                     "mikazuki.engines.anima_fast.environment.anima_pip_dependency_targets",
                     return_value=anima_pip_dependency_targets("win32"),
@@ -598,6 +863,7 @@ class AnimaFastEnvironmentInstallerTests(unittest.TestCase):
         self.assertIn("--no-deps", pip_commands[1])
         self.assertIn("--verbose", pip_commands[1])
         self.assertEqual(pip_commands[1][-1], str(layout.source))
+        self.assertFalse(any("--no-cache" in command for command in commands))
 
     def test_install_environment_broken_progress_does_not_report_complete(self):
         with tempfile.TemporaryDirectory() as td:

@@ -104,8 +104,8 @@ def find_project_root(start: Path | None = None) -> Path:
         if (root / "gui.py").is_file() and (root / "config" / "anima_fast_backend.toml").is_file():
             return root
     raise SystemExit(
-        "Cannot locate SD-Trainer project root (need gui.py and config/anima_fast_backend.toml). "
-        "Run from repo / SD-Trainer directory or pass --project-root."
+        "Cannot locate Next-Trainer project root (need gui.py and config/anima_fast_backend.toml). "
+        "Run from repo / Next-Trainer directory or pass --project-root."
     )
 
 
@@ -128,12 +128,12 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Install Anima LoRA Fast plugin (extensions/anima_lora) for CLI training."
     )
-    parser.add_argument("--project-root", type=Path, default=None, help="SD-Trainer root (default: auto-detect)")
+    parser.add_argument("--project-root", type=Path, default=None, help="Next-Trainer root (default: auto-detect)")
     parser.add_argument("--source-root", type=Path, default=None, help="Existing sorryhyun/anima_lora clone")
     parser.add_argument("--source-commit", default="", help="Pin upstream commit (default: config/anima_fast_backend.toml)")
     parser.add_argument("--dry-run", action="store_true", help="Print install plan only")
     parser.add_argument("--pip-index-url", default="", help="PyPI index URL (default: https://pypi.org/simple)")
-    parser.add_argument("--pytorch-index-url", default="", help="PyTorch wheel index base (cu130 appended if missing)")
+    parser.add_argument("--pytorch-index-url", default="", help="PyTorch wheel index base (cu132 appended if missing)")
     parser.add_argument("--hf-endpoint", default="", help="Hugging Face endpoint (default: installer mirror)")
     parser.add_argument("--github-url-prefix", default="", help="GitHub URL prefix, e.g. https://ghfast.top/")
     args = parser.parse_args(argv)
