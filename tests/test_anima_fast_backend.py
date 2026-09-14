@@ -498,16 +498,86 @@ class AdapterTests(unittest.TestCase):
             slug = dataset_cache_slug(root / "data" / "train_data", root)
         self.assertEqual(slug, "data_train_data")
 
-    def test_adapt_config_warns_when_epochs_override_steps(self):
+    def test_adapt_config_explicit_steps_removes_epochs(self):
+        with tempfile.TemporaryDirectory() as td:
+            runtime = make_runtime(Path(td))
+            adapted = adapt_config({
+                "lora_type": "lora",
+                "training_duration_mode": "steps",
+                "max_train_epochs": 1,
+                "max_train_steps": 100,
+            }, runtime, "run-1")
+
+        self.assertEqual(adapted.values["max_train_steps"], 100)
+        self.assertNotIn("max_train_epochs", adapted.values)
+
+    def test_adapt_config_explicit_steps_defaults_steps_when_missing(self):
+        with tempfile.TemporaryDirectory() as td:
+            runtime = make_runtime(Path(td))
+            adapted = adapt_config({
+                "lora_type": "lora",
+                "training_duration_mode": "steps",
+                "max_train_epochs": 1,
+            }, runtime, "run-1")
+
+        self.assertEqual(adapted.values["max_train_steps"], 100)
+        self.assertNotIn("max_train_epochs", adapted.values)
+
+    def test_adapt_config_explicit_epoch_removes_steps(self):
+        with tempfile.TemporaryDirectory() as td:
+            runtime = make_runtime(Path(td))
+            adapted = adapt_config({
+                "lora_type": "lora",
+                "training_duration_mode": "epoch",
+                "max_train_epochs": 2,
+                "max_train_steps": 100,
+            }, runtime, "run-1")
+
+        self.assertEqual(adapted.values["max_train_epochs"], 2)
+        self.assertNotIn("max_train_steps", adapted.values)
+
+    def test_adapt_config_legacy_step_only_remains_step_only(self):
+        with tempfile.TemporaryDirectory() as td:
+            runtime = make_runtime(Path(td))
+            adapted = adapt_config({
+                "lora_type": "lora",
+                "max_train_steps": 100,
+            }, runtime, "run-1")
+
+        self.assertEqual(adapted.values["max_train_steps"], 100)
+        self.assertNotIn("max_train_epochs", adapted.values)
+
+    def test_adapt_config_legacy_both_chooses_epoch_and_warns(self):
         with tempfile.TemporaryDirectory() as td:
             runtime = make_runtime(Path(td))
             adapted = adapt_config({
                 "lora_type": "lora",
                 "max_train_epochs": 1,
-                "max_train_steps": 1,
+                "max_train_steps": 100,
             }, runtime, "run-1")
 
+        self.assertEqual(adapted.values["max_train_epochs"], 1)
+        self.assertNotIn("max_train_steps", adapted.values)
         self.assertTrue(any("max_train_epochs is set" in warning for warning in adapted.warnings))
+
+    def test_adapt_config_defaults_optimizer_to_adamw(self):
+        for optimizer_type in (None, "", "null", "undefined", "nan"):
+            with self.subTest(optimizer_type=optimizer_type), tempfile.TemporaryDirectory() as td:
+                runtime = make_runtime(Path(td))
+                adapted = adapt_config({
+                    "lora_type": "lora",
+                    "optimizer_type": optimizer_type,
+                }, runtime, "run-1")
+
+                self.assertEqual(adapted.values["optimizer_type"], "AdamW")
+
+    def test_adapt_config_defaults_duration_to_one_epoch(self):
+        with tempfile.TemporaryDirectory() as td:
+            runtime = make_runtime(Path(td))
+            adapted = adapt_config({"lora_type": "lora"}, runtime, "run-1")
+
+        self.assertEqual(adapted.values["max_train_epochs"], 1)
+        self.assertNotIn("max_train_steps", adapted.values)
 
     def test_adapt_config_uses_torch_when_attn_mode_is_empty(self):
         with tempfile.TemporaryDirectory() as td:

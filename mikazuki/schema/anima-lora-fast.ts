@@ -44,15 +44,26 @@ Schema.intersect([
         progress_jsonl: Schema.string().hidden(),
     }).description("日志与监控"),
 
-    Schema.object({
-        max_train_epochs: Schema.number().min(1).default(1).description("最大训练 epoch；设置后 Anima 会按 epoch 和 dataloader 长度重算 step"),
-        max_train_steps: Schema.number().min(1).description("最大训练 step；仅在 max_train_epochs 为空时按 step 控制"),
-        train_batch_size: Schema.number().min(1).default(1).description("批量大小"),
-        dataset_repeats: Schema.number().min(1).default(1).description("数据集重复次数"),
-        gradient_checkpointing: Schema.boolean().default(true).description("梯度检查点（省显存）"),
-        gradient_accumulation_steps: Schema.number().min(1).default(1).description("梯度累加步数"),
-        seed: Schema.number().step(1).default(42).description("随机种子"),
-    }).description("训练相关参数"),
+    Schema.intersect([
+        Schema.object({
+            training_duration_mode: Schema.union(["epoch", "steps"]).default("epoch").description("训练时长模式"),
+            train_batch_size: Schema.number().min(1).default(1).description("批量大小"),
+            dataset_repeats: Schema.number().min(1).default(1).description("数据集重复次数"),
+            gradient_checkpointing: Schema.boolean().default(true).description("梯度检查点（省显存）"),
+            gradient_accumulation_steps: Schema.number().min(1).default(1).description("梯度累加步数"),
+            seed: Schema.number().step(1).default(42).description("随机种子"),
+        }),
+        Schema.union([
+            Schema.object({
+                training_duration_mode: Schema.const("epoch").required(),
+                max_train_epochs: Schema.number().min(1).default(1).description("最大训练 epoch；Anima 会按 epoch 和 dataloader 长度重算 step"),
+            }),
+            Schema.object({
+                training_duration_mode: Schema.const("steps").required(),
+                max_train_steps: Schema.number().min(1).default(100).description("最大训练 step"),
+            }),
+        ]),
+    ]).description("训练相关参数"),
 
     SHARED_SCHEMAS.ANIMA_FAST_LR_OPTIMIZER,
 

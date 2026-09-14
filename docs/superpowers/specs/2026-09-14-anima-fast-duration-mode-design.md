@@ -3,8 +3,8 @@
 ## Scope
 
 Fix issue #349 only for the Anima Fast engine. Do not change Kohya or other
-training engines. The existing Anima Fast `AdamW` schema and preset defaults
-remain unchanged and are covered by regression verification.
+training engines. Keep the existing Anima Fast `AdamW` schema and preset
+defaults, and complete the same fallback at the backend adapter boundary.
 
 ## User Behavior
 
@@ -17,7 +17,10 @@ Import behavior follows the fields explicitly present in the imported TOML:
 
 - Epoch only selects `Epoch`.
 - Steps only selects `Steps`.
-- Both fields select `Epoch`, discard `max_train_steps`, and show a notice.
+- Both fields without an explicit mode select `Epoch`, discard
+  `max_train_steps`, and show a notice.
+- A valid explicit `training_duration_mode` takes precedence for configs
+  exported by the updated UI.
 - Neither field keeps the default `Epoch` mode.
 
 The TOML preview, copied/exported TOML, and `/api/run` payload must all contain
@@ -46,9 +49,11 @@ configuration.
 
 ## Error Handling
 
-An imported TOML containing both duration fields is accepted because older
-files may already contain both. The UI selects Epoch, removes the steps value
-from the effective configuration, and displays an informational notice.
+An imported legacy TOML containing both duration fields and no explicit mode is
+accepted because older files may already contain both. The UI selects Epoch,
+removes the steps value from the effective configuration, and displays an
+informational notice. New-format configs with a valid explicit mode follow that
+mode and do not display a contradictory notice.
 
 Invalid or missing numeric values continue to use existing schema validation.
 No new coercion rules are introduced.

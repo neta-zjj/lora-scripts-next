@@ -263,4 +263,113 @@ describe("dynamic schema adapter", () => {
     expect(network.fields.map((field) => field.key)).toContain("network_train_unet_only")
     expect(createDefaultModel(fast)).toMatchObject({ network_train_unet_only: true })
   })
+
+  it("selects and serializes only the active Anima Fast duration field", () => {
+    const schemaDir = resolve(process.cwd(), "../mikazuki/schema")
+    const realSources = readdirSync(schemaDir).filter((name) => name.endsWith(".ts")).map((file) => ({
+      name: file.slice(0, -3),
+      hash: file,
+      schema: readFileSync(resolve(schemaDir, file), "utf8"),
+    }))
+    const fast = executeSchemaSources(realSources, "anima-lora-fast")
+    const defaults = createDefaultModel(fast)
+    const durationMode = fast.sections.flatMap((section) => section.fields).find((field) => field.key === "training_duration_mode")
+
+    expect(durationMode).toMatchObject({ options: ["epoch", "steps"], defaultValue: "epoch", hidden: undefined })
+    expect(serializeModel(fast, defaults)).toMatchObject({ training_duration_mode: "epoch", max_train_epochs: 1 })
+    expect(serializeModel(fast, defaults)).not.toHaveProperty("max_train_steps")
+
+    const steps = normalizeModelForSchema(fast, {
+      ...defaults,
+      training_duration_mode: "steps",
+    })
+    expect(steps).not.toHaveProperty("max_train_epochs")
+    expect(serializeModel(fast, steps)).toMatchObject({ training_duration_mode: "steps", max_train_steps: 100 })
+    expect(serializeModel(fast, steps)).not.toHaveProperty("max_train_epochs")
+  })
+
+  it("uses explicit Anima Fast import keys to choose the duration mode", () => {
+    const schemaDir = resolve(process.cwd(), "../mikazuki/schema")
+    const realSources = readdirSync(schemaDir).filter((name) => name.endsWith(".ts")).map((file) => ({
+      name: file.slice(0, -3),
+      hash: file,
+      schema: readFileSync(resolve(schemaDir, file), "utf8"),
+    }))
+    const fast = executeSchemaSources(realSources, "anima-lora-fast")
+    const defaults = createDefaultModel(fast)
+
+    const stepOnly = normalizeModelForSchema(
+      fast,
+      { ...defaults, max_train_steps: 100 },
+      { explicitKeys: new Set(["max_train_steps"]) },
+    )
+    expect(stepOnly).toMatchObject({ training_duration_mode: "steps", max_train_steps: 100 })
+    expect(stepOnly).not.toHaveProperty("max_train_epochs")
+
+    const epochOnly = normalizeModelForSchema(
+      fast,
+      { ...defaults, max_train_epochs: 3, max_train_steps: 100 },
+      { explicitKeys: new Set(["max_train_epochs"]) },
+    )
+    expect(epochOnly).toMatchObject({ training_duration_mode: "epoch", max_train_epochs: 3 })
+    expect(epochOnly).not.toHaveProperty("max_train_steps")
+
+    const both = normalizeModelForSchema(
+      fast,
+      { ...defaults, max_train_epochs: 3, max_train_steps: 100 },
+      { explicitKeys: new Set(["max_train_epochs", "max_train_steps"]) },
+    )
+    expect(both).toMatchObject({ training_duration_mode: "epoch", max_train_epochs: 3 })
+    expect(both).not.toHaveProperty("max_train_steps")
+
+    const neither = normalizeModelForSchema(
+      fast,
+      { ...defaults, max_train_steps: 100 },
+      { explicitKeys: new Set() },
+    )
+    expect(neither).toMatchObject({ training_duration_mode: "epoch", max_train_epochs: 1 })
+    expect(neither).not.toHaveProperty("max_train_steps")
+
+    const explicitModeOnly = normalizeModelForSchema(
+      fast,
+      { ...defaults, training_duration_mode: "steps" },
+      { explicitKeys: new Set(["training_duration_mode"]) },
+    )
+    expect(explicitModeOnly).toMatchObject({ training_duration_mode: "steps", max_train_steps: 100 })
+    expect(explicitModeOnly).not.toHaveProperty("max_train_epochs")
+
+    const blankEpoch = normalizeModelForSchema(
+      fast,
+      { ...defaults, max_train_epochs: "null", max_train_steps: 100 },
+      { explicitKeys: new Set(["max_train_epochs", "max_train_steps"]) },
+    )
+    expect(blankEpoch).toMatchObject({ training_duration_mode: "steps", max_train_steps: 100 })
+    expect(blankEpoch).not.toHaveProperty("max_train_epochs")
+  })
+
+  it("restores the active Anima Fast duration default after changing modes", () => {
+    const schemaDir = resolve(process.cwd(), "../mikazuki/schema")
+    const realSources = readdirSync(schemaDir).filter((name) => name.endsWith(".ts")).map((file) => ({
+      name: file.slice(0, -3),
+      hash: file,
+      schema: readFileSync(resolve(schemaDir, file), "utf8"),
+    }))
+    const fast = executeSchemaSources(realSources, "anima-lora-fast")
+    const initial = normalizeModelForSchema(fast, createDefaultModel(fast))
+    const steps = normalizeModelForSchema(fast, { ...initial, training_duration_mode: "steps" })
+
+    expect(steps).toMatchObject({ training_duration_mode: "steps", max_train_steps: 100 })
+    expect(steps).not.toHaveProperty("max_train_epochs")
+  })
+
+  it("does not apply Anima Fast duration normalization to other schemas", () => {
+    const schema = executeSchemaSources([{
+      name: "kohya",
+      hash: "kohya",
+      schema: "Schema.object({ max_train_epochs: Schema.number().default(10), max_train_steps: Schema.number() })",
+    }], "kohya")
+    const model = { max_train_epochs: 10, max_train_steps: 100 }
+
+    expect(normalizeModelForSchema(schema, model, { explicitKeys: new Set(["max_train_steps"]) })).toEqual(model)
+  })
 })

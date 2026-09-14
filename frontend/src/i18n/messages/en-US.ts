@@ -147,6 +147,7 @@ export default {
       jump: "Jump and Import",
       cancel: "Cancel",
       fail: "Failed to import config",
+      animaFastDurationConflict: "The config contains both epoch and steps durations. Epoch takes precedence, and max_train_steps was ignored.",
     },
     exportFail: "Failed to export config",
     submitConfirm: {
