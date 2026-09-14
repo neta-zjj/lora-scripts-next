@@ -147,6 +147,7 @@ export default {
       jump: "跳转并导入",
       cancel: "取消",
       fail: "配置导入失败",
+      animaFastDurationConflict: "配置同时包含 epoch 和 steps 训练时长；已优先使用 Epoch 并忽略 max_train_steps。",
     },
     exportFail: "配置导出失败",
     submitConfirm: {

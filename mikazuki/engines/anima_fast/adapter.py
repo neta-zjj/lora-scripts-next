@@ -19,6 +19,7 @@ UI_ONLY_FIELDS = {
     "anima_fast_dataset_mode",
     "anima_fast_run_preprocess",
     "anima_fast_allow_unsupported",
+    "training_duration_mode",
     "enable_preview",
     "positive_prompts",
     "negative_prompts",
@@ -489,13 +490,28 @@ def adapt_config(source: dict[str, Any], runtime: RuntimeConfig, run_id: str) ->
     else:
         values.pop("down_init", None)
 
-    if not is_empty(source.get("max_train_epochs")) and not is_empty(source.get("max_train_steps")):
+    has_epochs = not is_empty(source.get("max_train_epochs"))
+    has_steps = not is_empty(source.get("max_train_steps"))
+    duration_mode = source.get("training_duration_mode")
+    if duration_mode not in {"epoch", "steps"}:
+        duration_mode = "steps" if has_steps and not has_epochs else "epoch"
+
+    if duration_mode == "steps":
+        values.pop("max_train_epochs", None)
+        values.setdefault("max_train_steps", 100)
+    else:
+        values.pop("max_train_steps", None)
+        values.setdefault("max_train_epochs", 1)
+
+    if has_epochs and has_steps and duration_mode == "epoch":
         warnings.append("max_train_epochs is set; anima_lora derives max_train_steps from epochs and dataloader length")
 
     if source.get("network_module") and source["network_module"] != "networks.lora_anima":
         warnings.append(f"network_module={source['network_module']} was replaced by networks.lora_anima")
 
-    optimizer_type = str(values.get("optimizer_type", source.get("optimizer_type", "AdamW8bit"))).strip()
+    raw_optimizer_type = values.get("optimizer_type", source.get("optimizer_type"))
+    optimizer_type = "AdamW" if is_empty(raw_optimizer_type) else str(raw_optimizer_type).strip()
+    values["optimizer_type"] = optimizer_type
     if optimizer_type and optimizer_type not in FAST_SUPPORTED_OPTIMIZERS:
         if optimizer_type == "Automagic":
             raise AdapterError(

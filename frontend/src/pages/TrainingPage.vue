@@ -9,7 +9,7 @@ import ModelAssetsTools from "../components/ModelAssetsTools.vue"
 import SectionToc from "../components/SectionToc.vue"
 import { schemasApi } from "../api/schemas"
 import { trainingApi, type TrainingPreset, type TrainingStart } from "../api/training"
-import { applyReadonlyDefaults, cloneFormModel, cloneFormValue, createDefaultModel, isFieldActive, normalizeModelForSchema, serializeModel, validateModel, type AdaptedSchema, type FormField, type FormModel } from "../schema/adapter"
+import { applyReadonlyDefaults, cloneFormModel, cloneFormValue, createDefaultModel, hasFormValue, isFieldActive, normalizeModelForSchema, serializeModel, validateModel, type AdaptedSchema, type FormField, type FormModel } from "../schema/adapter"
 import { loadTrainingSchema } from "../schema/loader"
 import { buildTrainingConfig, checkTrainingConfig, hydrateImportedConfig, pickCarryOverFields, sanitizePersistedDraft } from "../training/params"
 import { moduleForTrainType } from "../training/modules"
@@ -112,8 +112,19 @@ async function applyImportedConfig(config: FormModel, successMessage?: string) {
     return
   }
   const defaults = effectiveDefaults.value
-  model.value = normalizeModelForSchema(schema.value!, { ...cloneFormModel(defaults), ...hydrateImportedConfig(result.config || config) })
+  const validatedConfig = result.config || config
+  const explicitKeys = new Set(Object.keys(validatedConfig))
+  const importedConfig = hydrateImportedConfig(validatedConfig)
+  model.value = normalizeModelForSchema(schema.value!, { ...cloneFormModel(defaults), ...importedConfig }, { explicitKeys })
   applyReadonlyDefaults(schema.value!, model.value, defaults)
+  if (
+    props.schemaName === "anima-lora-fast"
+    && importedConfig.training_duration_mode !== "steps"
+    && hasFormValue(importedConfig.max_train_epochs)
+    && hasFormValue(importedConfig.max_train_steps)
+  ) {
+    ElMessage.info(t("training.importMsg.animaFastDurationConflict"))
+  }
   if (result.notice) ElMessage.info(result.notice)
   ElMessage.success(successMessage ?? t("training.importMsg.imported"))
 }
@@ -164,6 +175,10 @@ function resolveEffectiveDefaults(loaded: AdaptedSchema) {
   const defaults = createDefaultModel(loaded)
   for (const [key, value] of Object.entries(props.fieldDefaults || {})) defaults[key] = cloneFormValue(value)
   return defaults
+}
+
+function updateModel(next: FormModel) {
+  model.value = schema.value ? normalizeModelForSchema(schema.value, next) : next
 }
 
 function validate() {
@@ -347,7 +362,7 @@ onBeforeUnmount(() => {
           <slot name="form-top" />
           <div v-if="loading" class="schema-state"><strong>{{ t("training.loadingSchema") }}</strong><span>{{ t("training.loadingSchemaHint") }}</span></div>
           <div v-else-if="error" class="schema-state schema-error"><strong>{{ t("training.schemaError") }}</strong><span>{{ error }}</span><button @click="load">{{ t("training.retry") }}</button></div>
-          <DynamicSchemaForm v-else-if="schema" v-model="model" :schema="schema" :errors="errors" :effective-defaults="effectiveDefaults" @reset-field="resetField">
+          <DynamicSchemaForm v-else-if="schema" :model-value="model" :schema="schema" :errors="errors" :effective-defaults="effectiveDefaults" @update:model-value="updateModel" @reset-field="resetField">
         <template #[modelToolsSlot]>
           <ModelAssetsTools :schema-name="schemaName" :model="model" />
         </template>

@@ -203,8 +203,42 @@ export function isAnimaFastTorchCompileBlocked(schema: AdaptedSchema, model: For
   return attnMode === "" || attnMode === "torch"
 }
 
-export function normalizeModelForSchema(schema: AdaptedSchema, model: FormModel) {
+export interface NormalizeModelOptions {
+  explicitKeys?: ReadonlySet<string>
+}
+
+export function hasFormValue(value: unknown) {
+  if (value === undefined || value === null) return false
+  if (typeof value === "string" && ["", "undefined", "null", "nan"].includes(value.trim().toLowerCase())) return false
+  return !Array.isArray(value) || value.length > 0
+}
+
+function fieldDefault(schema: AdaptedSchema, key: string) {
+  const field = schema.sections.flatMap((section) => section.fields).find((item) => item.key === key && item.defaultValue !== undefined)
+  return field?.defaultValue
+}
+
+export function normalizeModelForSchema(schema: AdaptedSchema, model: FormModel, options: NormalizeModelOptions = {}) {
   const normalized = cloneFormModel(model)
+  if (schema.name === "anima-lora-fast") {
+    const explicitMode = options.explicitKeys?.has("training_duration_mode")
+      && (normalized.training_duration_mode === "epoch" || normalized.training_duration_mode === "steps")
+      ? normalized.training_duration_mode
+      : undefined
+    const hasExplicitEpochs = (options.explicitKeys?.has("max_train_epochs") ?? false) && hasFormValue(normalized.max_train_epochs)
+    const hasExplicitSteps = (options.explicitKeys?.has("max_train_steps") ?? false) && hasFormValue(normalized.max_train_steps)
+    const durationMode = options.explicitKeys
+      ? explicitMode ?? (hasExplicitSteps && !hasExplicitEpochs ? "steps" : "epoch")
+      : normalized.training_duration_mode === "steps" ? "steps" : "epoch"
+    normalized.training_duration_mode = durationMode
+    const activeKey = durationMode === "steps" ? "max_train_steps" : "max_train_epochs"
+    const inactiveKey = durationMode === "steps" ? "max_train_epochs" : "max_train_steps"
+    delete normalized[inactiveKey]
+    if (!hasFormValue(normalized[activeKey])) {
+      const defaultValue = fieldDefault(schema, activeKey)
+      if (defaultValue !== undefined) normalized[activeKey] = cloneFormValue(defaultValue)
+    }
+  }
   if (isAnimaFastTorchCompileBlocked(schema, normalized)) normalized.torch_compile = false
   return normalized
 }

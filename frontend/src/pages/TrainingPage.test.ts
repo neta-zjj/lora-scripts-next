@@ -11,6 +11,7 @@ import type { AdaptedSchema } from "../schema/adapter"
 import { loadTrainingSchema } from "../schema/loader"
 import { schemasApi } from "../api/schemas"
 import { tasksApi } from "../api/tasks"
+import { trainingApi } from "../api/training"
 
 vi.mock("../schema/loader", () => ({
   loadTrainingSchema: vi.fn(),
@@ -27,6 +28,19 @@ vi.mock("../api/tasks", () => ({
   tasksApi: {
     list: vi.fn(),
     terminate: vi.fn(),
+  },
+}))
+
+vi.mock("../api/training", () => ({
+  trainingApi: {
+    validateImport: vi.fn(),
+    normalizeExport: vi.fn(),
+    presets: vi.fn(),
+    run: vi.fn(),
+    saveParams: vi.fn(),
+    animaFastPreflight: vi.fn(),
+    musubiPreflight: vi.fn(),
+    aiToolkitPreflight: vi.fn(),
   },
 }))
 
@@ -69,6 +83,20 @@ const schema: AdaptedSchema = {
   }],
 }
 
+const animaFastSchema: AdaptedSchema = {
+  ...schema,
+  name: "anima-lora-fast",
+  sections: [{
+    ...schema.sections[0],
+    fields: [
+      ...schema.sections[0].fields,
+      { key: "training_duration_mode", type: "string", options: ["epoch", "steps"], defaultValue: "epoch", conditions: [] },
+      { key: "max_train_epochs", type: "number", defaultValue: 1, min: 1, conditions: [{ key: "training_duration_mode", value: "epoch" }] },
+      { key: "max_train_steps", type: "number", defaultValue: 100, min: 1, conditions: [{ key: "training_duration_mode", value: "steps" }] },
+    ],
+  }],
+}
+
 const DynamicSchemaFormStub = defineComponent({
   props: {
     modelValue: { type: Object as PropType<Record<string, unknown>>, required: true },
@@ -93,6 +121,7 @@ const DynamicSchemaFormStub = defineComponent({
       <button class="set-mode-advanced" @click="patch({ mode: 'advanced' })">mode advanced</button>
       <button class="set-tags" @click="patch({ tags: ['changed'] })">set tags</button>
       <button class="set-advanced-only" @click="patch({ advanced_only: 'branch-custom' })">set advanced</button>
+      <button class="set-duration-steps" @click="patch({ training_duration_mode: 'steps' })">steps</button>
       <button class="mutate-tags" @click="mutateTags">mutate tags</button>
       <button class="reset-sample" @click="$emit('reset-field', 'sample_cfg')">reset sample</button>
       <button class="reset-optional" @click="$emit('reset-field', 'optional_note')">reset optional</button>
@@ -128,6 +157,7 @@ function mountPage(schemaName = "test-schema") {
 }
 
 beforeEach(() => {
+  vi.clearAllMocks()
   localStorage.clear()
   sessionStorage.clear()
   vi.spyOn(window, "setInterval").mockReturnValue(1 as unknown as ReturnType<typeof window.setInterval>)
@@ -135,6 +165,8 @@ beforeEach(() => {
   vi.mocked(loadTrainingSchema).mockResolvedValue(schema)
   vi.mocked(schemasApi.graphicCards).mockResolvedValue([])
   vi.mocked(tasksApi.list).mockResolvedValue([])
+  vi.mocked(trainingApi.validateImport).mockResolvedValue({ result: "ok" })
+  vi.mocked(trainingApi.saveParams).mockResolvedValue({ ok: true, page_train_type: "test-schema" })
 })
 
 afterEach(() => {
@@ -195,7 +227,7 @@ describe("TrainingPage single-field reset", () => {
   })
 
   it("normalizes unsafe carry-over when autosave JSON is malformed", async () => {
-    const animaFastSchema: AdaptedSchema = {
+    const torchCompileSchema: AdaptedSchema = {
       ...schema,
       name: "anima-lora-fast",
       sections: [{
@@ -207,7 +239,7 @@ describe("TrainingPage single-field reset", () => {
         ],
       }],
     }
-    vi.mocked(loadTrainingSchema).mockResolvedValue(animaFastSchema)
+    vi.mocked(loadTrainingSchema).mockResolvedValue(torchCompileSchema)
     sessionStorage.setItem("mikazuki-carry-over", JSON.stringify({ attn_mode: "torch", torch_compile: true }))
     localStorage.setItem("configs-anima-lora-fast-autosave", "{malformed")
 
@@ -215,6 +247,97 @@ describe("TrainingPage single-field reset", () => {
     await flushPromises()
 
     expect(wrapper.get(".model").text()).toContain('"torch_compile":false')
+    wrapper.unmount()
+  })
+})
+
+describe("TrainingPage Anima Fast imports", () => {
+  it("restores the default step count when the user switches from Epoch to Steps", async () => {
+    vi.mocked(loadTrainingSchema).mockResolvedValue(animaFastSchema)
+
+    const wrapper = mountPage("anima-lora-fast")
+    await flushPromises()
+    expect(wrapper.get(".model").text()).not.toContain("max_train_steps")
+
+    await wrapper.get(".set-duration-steps").trigger("click")
+
+    expect(wrapper.get(".model").text()).toContain('"training_duration_mode":"steps"')
+    expect(wrapper.get(".model").text()).toContain('"max_train_steps":100')
+    expect(wrapper.get(".preview-panel pre").text()).toContain("max_train_steps = 100")
+    wrapper.unmount()
+  })
+
+  it("keeps a step-only import step-only in the preview", async () => {
+    vi.mocked(loadTrainingSchema).mockResolvedValue(animaFastSchema)
+    vi.mocked(trainingApi.validateImport).mockResolvedValue({
+      result: "ok",
+      config: { max_train_steps: 100 },
+    })
+    sessionStorage.setItem("mikazuki-pending-import", JSON.stringify({ max_train_steps: 100 }))
+
+    const wrapper = mountPage("anima-lora-fast")
+    await flushPromises()
+
+    expect(wrapper.get(".model").text()).toContain('"training_duration_mode":"steps"')
+    expect(wrapper.get(".preview-panel pre").text()).toContain("max_train_steps = 100")
+    expect(wrapper.get(".preview-panel pre").text()).not.toContain("max_train_epochs")
+    wrapper.unmount()
+  })
+
+  it("uses Epoch for a dual-field import and preserves the backend notice", async () => {
+    vi.mocked(loadTrainingSchema).mockResolvedValue(animaFastSchema)
+    vi.mocked(trainingApi.validateImport).mockResolvedValue({
+      result: "ok",
+      config: { max_train_epochs: 3, max_train_steps: 100 },
+      notice: "Backend import notice",
+    })
+    sessionStorage.setItem("mikazuki-pending-import", JSON.stringify({ max_train_epochs: 3, max_train_steps: 100 }))
+
+    const wrapper = mountPage("anima-lora-fast")
+    await flushPromises()
+
+    expect(wrapper.get(".model").text()).toContain('"training_duration_mode":"epoch"')
+    expect(wrapper.get(".preview-panel pre").text()).toContain("max_train_epochs = 3")
+    expect(wrapper.get(".preview-panel pre").text()).not.toContain("max_train_steps")
+    expect(vi.mocked(ElMessage.info)).toHaveBeenCalledWith(i18n.global.t("training.importMsg.animaFastDurationConflict"))
+    expect(vi.mocked(ElMessage.info)).toHaveBeenCalledWith("Backend import notice")
+    wrapper.unmount()
+  })
+
+  it("does not report a conflict when an imported duration field is blank", async () => {
+    vi.mocked(loadTrainingSchema).mockResolvedValue(animaFastSchema)
+    vi.mocked(trainingApi.validateImport).mockResolvedValue({
+      result: "ok",
+      config: { max_train_epochs: "", max_train_steps: 100 },
+    })
+    sessionStorage.setItem("mikazuki-pending-import", JSON.stringify({ max_train_epochs: "", max_train_steps: 100 }))
+
+    const wrapper = mountPage("anima-lora-fast")
+    await flushPromises()
+
+    expect(wrapper.get(".model").text()).toContain('"training_duration_mode":"steps"')
+    expect(vi.mocked(ElMessage.info)).not.toHaveBeenCalledWith(i18n.global.t("training.importMsg.animaFastDurationConflict"))
+    wrapper.unmount()
+  })
+
+  it("does not show the Epoch conflict notice when an explicit Steps import contains both fields", async () => {
+    vi.mocked(loadTrainingSchema).mockResolvedValue(animaFastSchema)
+    vi.mocked(trainingApi.validateImport).mockResolvedValue({
+      result: "ok",
+      config: { training_duration_mode: "steps", max_train_epochs: 3, max_train_steps: 100 },
+    })
+    sessionStorage.setItem("mikazuki-pending-import", JSON.stringify({
+      training_duration_mode: "steps",
+      max_train_epochs: 3,
+      max_train_steps: 100,
+    }))
+
+    const wrapper = mountPage("anima-lora-fast")
+    await flushPromises()
+
+    expect(wrapper.get(".model").text()).toContain('"training_duration_mode":"steps"')
+    expect(wrapper.get(".model").text()).not.toContain("max_train_epochs")
+    expect(vi.mocked(ElMessage.info)).not.toHaveBeenCalledWith(i18n.global.t("training.importMsg.animaFastDurationConflict"))
     wrapper.unmount()
   })
 })
