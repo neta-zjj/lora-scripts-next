@@ -336,12 +336,15 @@ def test_dataset_editor_rejects_path_escape(tmp_path):
     assert "outside dataset" in response.json()["detail"]
 
 
-def test_legacy_gradio_tageditor_is_opt_in():
+def test_legacy_gradio_tageditor_is_removed():
     gui = (ROOT / "gui.py").read_text(encoding="utf-8")
+    proxy = (ROOT / "mikazuki" / "app" / "proxy.py").read_text(encoding="utf-8")
 
-    assert "--enable-legacy-tageditor" in gui
-    assert "legacy_tageditor_enabled = args.enable_legacy_tageditor" in gui
-    assert "run_tag_editor(tageditor_port)" in gui
+    assert "enable-legacy-tageditor" not in gui
+    assert "run_tag_editor" not in gui
+    assert "dataset-tag-editor" not in gui
+    assert "/proxy/tageditor" not in proxy
+    assert "MIKAZUKI_TAGEDITOR_PORT" not in gui
 
 
 def test_dataset_editor_vue_source_exposes_enhanced_workflow():

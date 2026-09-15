@@ -24,13 +24,24 @@ def test_portable_builder_embeds_git_metadata_for_updates():
     assert "--depth=1" in script
 
 
-def test_portable_builder_initializes_dataset_tag_editor_before_copy():
+def test_portable_builder_no_longer_requires_dataset_tag_editor():
     script = (ROOT / "build-scripts" / "build_portable.ps1").read_text(
         encoding="utf-8"
     )
+    copy_project = (ROOT / "build-scripts" / "03-copy-project.ps1").read_text(
+        encoding="utf-8"
+    )
+    updater = (ROOT / "scripts" / "portable" / "templates" / "Update-Next-Trainer.bat").read_text(
+        encoding="utf-8"
+    )
+    run_gui_sh = (ROOT / "run_gui.sh").read_text(encoding="utf-8")
 
-    assert "mikazuki/dataset-tag-editor" in script
-    assert "dataset-tag-editor\\scripts\\launch.py" in script
+    assert "dataset-tag-editor" not in script
+    assert "Initialize-DatasetTagEditor" not in script
+    assert "dataset-tag-editor" not in updater
+    assert "try_submodule" not in updater
+    assert "git submodule update" not in copy_project
+    assert "git submodule update" not in run_gui_sh
 
 
 def test_portable_launcher_uses_auto_hub_backend_without_forcing_modelscope():

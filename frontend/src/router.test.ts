@@ -12,4 +12,11 @@ describe("generic plugin routes", () => {
   it("does not contain duplicate settings engine routes", () => {
     expect(router.getRoutes().filter((route) => route.path === "/settings/engines")).toHaveLength(1)
   })
+
+  it("redirects legacy Gradio tag editor URLs to the Vue dataset editor", () => {
+    for (const path of ["/tageditor.html", "/native-tageditor.html", "/dataset-editor.html"]) {
+      const record = router.getRoutes().find((route) => route.path === path)
+      expect(record?.redirect, path).toBe("/dataset/editor")
+    }
+  })
 })
