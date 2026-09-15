@@ -922,7 +922,6 @@ export default {
   integration: {
     openExternal: "Open in New Window",
     backToTasks: "Back to Tasks",
-    legacyTagEditor: "Legacy Tag Editor",
   },
   api: {
     network: "Cannot connect to the backend",

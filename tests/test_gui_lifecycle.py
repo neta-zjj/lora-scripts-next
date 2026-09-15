@@ -41,10 +41,11 @@ class FakeProcess:
         self.killed = True
 
 
-def test_legacy_tageditor_is_disabled_by_default():
-    args = gui.parser.parse_args([])
+def test_legacy_tageditor_flags_are_removed():
+    help_text = gui.parser.format_help()
 
-    assert args.enable_legacy_tageditor is False
+    assert "enable-legacy-tageditor" not in help_text
+    assert "disable-tageditor" not in help_text
 
 
 def test_helper_launchers_return_process_handles():

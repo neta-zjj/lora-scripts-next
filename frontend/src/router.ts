@@ -56,6 +56,7 @@ const routes: RouteRecordRaw[] = [
   { path: "/tagger.html", redirect: "/dataset/tagger" },
   { path: "/native-tageditor.html", redirect: "/dataset/editor" },
   { path: "/dataset-editor.html", redirect: "/dataset/editor" },
+  { path: "/tageditor.html", redirect: "/dataset/editor" },
   { path: "/task.html", redirect: "/tasks" },
   { path: "/other/settings.html", redirect: "/settings/ui" },
   { path: "/other/about.html", redirect: "/settings/about" },
@@ -69,12 +70,6 @@ const routes: RouteRecordRaw[] = [
   },
   { path: "/lora/tools.html", component: ToolsPage, meta: { titleKey: "tools.title" } },
   { path: "/lora/params.html", component: ParamsPage, meta: { titleKey: "paramsPage.title" } },
-  {
-    path: "/tageditor.html",
-    component: IntegrationPage,
-    props: { titleKey: "integration.legacyTagEditor", src: "/proxy/tageditor/" },
-    meta: { titleKey: "integration.legacyTagEditor" },
-  },
   {
     path: "/plugins/:pluginId/artifacts/:artifactId",
     name: "plugin-artifact-detail",

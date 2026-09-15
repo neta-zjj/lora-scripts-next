@@ -5,6 +5,10 @@
 ---
 ## 未发布（dev）
 
+### 清理
+
+- **移除 legacy Gradio `dataset-tag-editor`**：删除 Git 子模块与 `:28001` 代理；数据集标签编辑仅保留 Vue 自研 `/dataset/editor`。旧 URL `/tageditor.html` 重定向到自研编辑器。
+
 ### 修复
 
 - **Anima Fast 引擎切换串台（#271）**：从 Kohya 切到 Anima Fast 时，不再把 `model_train_type=anima-lora` 与 Kohya 默认 `cache_*=true` 带进 Fast；提交时按页面 schema 强制 `anima-lora-fast`，避免静默启动 `anima_train_network.py`

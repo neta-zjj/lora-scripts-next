@@ -34,6 +34,7 @@ ROUTES = (
     "lora/anima-finetune.html",
     "dreambooth/index.html",
     "tagger.html",
+    "tageditor.html",
     "native-tageditor.html",
     "dataset-editor.html",
     "tensorboard.html",

@@ -922,7 +922,6 @@ export default {
   integration: {
     openExternal: "在新窗口打开",
     backToTasks: "返回任务页",
-    legacyTagEditor: "旧版标签编辑器",
   },
   api: {
     network: "无法连接到后端",

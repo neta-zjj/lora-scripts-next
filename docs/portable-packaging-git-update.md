@@ -93,19 +93,10 @@ Anima LoRA **Fast 模式**使用可选插件 [`sorryhyun/anima_lora`](https://gi
 
 ## 子模块策略
 
-当前唯一子模块是：
+仓库**不再包含** Git 子模块。数据集标签编辑使用 Vue 自研页（`/dataset/editor`）；旧 Gradio `dataset-tag-editor` 已从主线移除。
 
-```text
-mikazuki/dataset-tag-editor
-```
+整合包更新脚本只需更新主仓，不再执行 `git submodule update`。
 
-它已很久不更新，后续计划移除。现阶段更新脚本可继续尝试：
-
-```bat
-git submodule update --init --recursive --depth=1
-```
-
-但该子模块更新失败只能作为 warning，不应阻断主仓更新。用户训练主流程不应因为标签编辑器子模块失败而无法完成代码更新。
 
 ## 用户数据保护
 
@@ -203,14 +194,9 @@ powershell -NoProfile -ExecutionPolicy Bypass -File `
    - git merge --ff-only "origin/<branch>"
    - git merge --ff-only FETCH_HEAD
    - git pull --ff-only --depth=1 origin <branch>
-8. 更新子模块：
-   - 若整合包已内置 `dataset-tag-editor/scripts/launch.py` 但没有子模块 `.git` 元数据，直接复用内置文件，跳过 clone
-   - 否则直连 GitHub → 失败后依次尝试 ghfast.top / ghproxy / gitmirror
-   - 镜像尝试使用临时 `git -c submodule...url=...`，不要改写 `.gitmodules`
-   - dataset-tag-editor 失败只 warning，加 `--depth=1` 减少传输量
-9. 刷新根目录启动器：
+8. 刷新根目录启动器：
    - scripts/portable/sync_portable_root_launchers.bat --nopause
-10. 输出当前版本和成功提示
+9. 输出当前版本和成功提示
 ```
 
 不要只执行裸 `git pull`。裸 `git pull` 会依赖当前分支、当前 remote 和用户本地状态，失败时对小白不友好。
@@ -282,12 +268,10 @@ fast-forward update failed
 - **国内无代理网络**：Git 直连失败后自动通过镜像成功拉取；Release 下载镜像回退可用
 - 工作区有用户数据：`sd-models/`、`output/`、`logs/`、`config/` 更新后不丢失
 - 工作区有本地改动：Git 更新脚本能 stash 或给出明确提示
-- `dataset-tag-editor` 子模块更新失败：只 warning，不阻断主更新
 - 更新后根目录 `run_gui.bat`、`Update-Next-Trainer-Release.bat` 被刷新
 - 更新后仍能启动 WebUI
 
 ## 后续清理
 
-- 移除 `mikazuki/dataset-tag-editor` 子模块，降低更新复杂度。
 - 将官方默认配置与用户配置分离，避免 `config/` 参与 Git 冲突。
 - 镜像列表可考虑从远程配置文件动态获取，避免硬编码过期。

@@ -99,20 +99,6 @@ function Invoke-GitChecked {
     }
 }
 
-function Initialize-DatasetTagEditor {
-    Write-Host "  Checking dataset-tag-editor submodule..."
-    $tagEditorLaunch = Join-Path $ProjectRoot "mikazuki\dataset-tag-editor\scripts\launch.py"
-    if (-not (Test-Path $tagEditorLaunch)) {
-        Write-Host "  Initializing dataset-tag-editor submodule..."
-        Invoke-GitChecked `
-            -Arguments @("submodule", "update", "--init", "--recursive", "--depth=1", "--", "mikazuki/dataset-tag-editor") `
-            -ErrorMessage "dataset-tag-editor submodule init failed"
-    }
-    if (-not (Test-Path $tagEditorLaunch)) {
-        throw "dataset-tag-editor\scripts\launch.py missing after submodule init"
-    }
-}
-
 function Clone-SDTrainerGitMetadata {
     param([string]$Destination)
     Write-Host "  Embedding shallow .git metadata for Update-Next-Trainer.bat..."
@@ -445,8 +431,6 @@ if (-not (Test-Path $getPipPath)) {
 
 Write-Host ""
 Write-Host "[2/6] Copying project files..." -ForegroundColor Cyan
-
-Initialize-DatasetTagEditor
 
 $copyDirs = @(
     @{ Src = "assets";  Dst = "assets" },

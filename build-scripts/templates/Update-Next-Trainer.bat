@@ -208,64 +208,6 @@ if errorlevel 1 (
 )
 echo.
 
-:: --------------- Submodules (with mirror fallback) ---------------
-echo Updating submodules / 更新子模块...
-echo.
-
-set "SUB_OK=0"
-set "SUB_PATH=mikazuki/dataset-tag-editor"
-set "SUB_WORKTREE=mikazuki\dataset-tag-editor"
-
-:: Read original submodule URL
-set "SUB_ORIG_URL="
-for /f "tokens=*" %%u in ('git config --file .gitmodules submodule.mikazuki/dataset-tag-editor.url 2^>nul') do set "SUB_ORIG_URL=%%u"
-if not defined SUB_ORIG_URL set "SUB_ORIG_URL=https://github.com/Akegarasu/dataset-tag-editor"
-
-:: Portable packages may already contain dataset-tag-editor files copied by
-:: robocopy, but without submodule git metadata. In that case, cloning into the
-:: non-empty directory fails; treat the bundled files as usable.
-if exist "!SUB_WORKTREE!\scripts\launch.py" if not exist "!SUB_WORKTREE!\.git" (
-    echo Bundled dataset-tag-editor files detected; skipping submodule clone.
-    echo 检测到整合包已内置 dataset-tag-editor 文件，跳过子模块克隆。
-    set "SUB_OK=1"
-)
-
-:: Attempt 1: direct
-if !SUB_OK! equ 0 (
-    echo [1/4] Submodule direct / 子模块直连
-    git submodule update --init --recursive --depth=1 "!SUB_PATH!" >nul 2>&1
-    if !errorlevel! equ 0 (
-        set "SUB_OK=1"
-        echo   OK
-    )
-)
-
-:: Attempt 2-4: mirrors (temporary config override; do not modify .gitmodules)
-if !SUB_OK! equ 0 (
-    echo   Failed / 失败
-    echo.
-    timeout /t 2 /nobreak >nul
-    call :try_submodule "2/4" "ghfast.top" "https://ghfast.top/!SUB_ORIG_URL!"
-)
-if !SUB_OK! equ 0 (
-    timeout /t 2 /nobreak >nul
-    call :try_submodule "3/4" "ghproxy mirror" "https://mirror.ghproxy.com/!SUB_ORIG_URL!"
-)
-if !SUB_OK! equ 0 (
-    timeout /t 2 /nobreak >nul
-    call :try_submodule "4/4" "gitmirror" "https://hub.gitmirror.com/!SUB_ORIG_URL!"
-)
-
-if !SUB_OK! equ 0 (
-    echo.
-    echo [Warning] Optional submodule update failed / 可选子模块更新失败
-    echo dataset-tag-editor is not required for the main training workflow.
-    echo dataset-tag-editor 不影响主要训练流程，继续更新。
-) else (
-    echo Submodule updated successfully / 子模块更新成功
-)
-echo.
-
 :: --------------- Refresh root launchers ---------------
 if exist "scripts\portable\sync_portable_root_launchers.bat" (
     echo Refreshing portable root launchers / 刷新整合包根目录启动脚本...
@@ -379,20 +321,6 @@ echo [%~1] %~2
 git fetch "%~3" %~4 --tags !FETCH_DEPTH_ARG! >nul 2>&1
 if !errorlevel! equ 0 (
     set "FETCH_OK=1"
-    echo   OK
-) else (
-    echo   Failed / 失败
-    echo.
-)
-goto :eof
-
-:: =============== Subroutine: try_submodule ===============
-:: Usage: call :try_submodule "label" "name" "mirror_url"
-:try_submodule
-echo [%~1] Submodule via %~2
-git -c "submodule.mikazuki/dataset-tag-editor.url=%~3" submodule update --init --recursive --depth=1 "!SUB_PATH!" >nul 2>&1
-if !errorlevel! equ 0 (
-    set "SUB_OK=1"
     echo   OK
 ) else (
     echo   Failed / 失败
